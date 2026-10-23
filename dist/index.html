@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>poke.AI — an agent that plays Pokémon Emerald</title>
+  <meta name="description" content="poke.AI is an experimental computer-vision agent that localises, maps and explores the world of Pokémon Emerald. Winner of the Orbital 2019 Judge's Choice award.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%235ff2b6'/%3E%3Cpath d='M2 16h28' stroke='%23070b12' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23070b12'/%3E%3Ccircle cx='16' cy='16' r='2' fill='%235ff2b6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="poke.AI home">
+      <span class="ball" aria-hidden="true"></span>
+      <span>poke<span class="dot">.</span>AI</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#lab">Live lab</a>
+      <a href="#modules">Modules</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#origin">Origin</a>
+    </nav>
+    <div class="status"><span class="pulse" aria-hidden="true"></span>agent online</div>
+  </header>
+
+  <main id="top">
+
+    <section id="lab" class="lab" aria-labelledby="lab-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">Interactive reconstruction</p>
+          <h2 id="lab-title">The exploration loop, live.</h2>
+        </div>
+        <p class="section-note">
+          The agent's loop running in your browser: line-of-sight perception
+          fills an occupancy grid, frontier BFS picks the next target, and a DQN
+          trains on every battle turn while you watch.
+        </p>
+      </div>
+
+      <div class="lab-grid">
+        <div class="screen-wrap">
+          <div class="screen">
+            <div class="screen-bar">
+              <span class="screen-title"><span class="led"></span>EMERALD / ROUTE 101</span>
+              <span id="hud-mode" class="hud-mode">EXPLORE</span>
+            </div>
+            <canvas id="game" width="480" height="320" aria-label="Animated tile map showing an AI agent exploring and detecting buildings"></canvas>
+            <div class="screen-foot">
+              <span>PADDLES: <b id="hud-pad">—</b></span>
+              <span>BATTERY <b id="hud-battery">87%</b></span>
+              <span id="hud-clock">00:00:00</span>
+            </div>
+          </div>
+          <div class="controls" role="group" aria-label="Demo controls">
+            <button id="toggle" class="btn primary small" type="button">Pause</button>
+            <button id="reset" class="btn ghost small" type="button">New route</button>
+            <label class="speed">
+              <span>Speed</span>
+              <input id="speed" type="range" min="1" max="6" value="3" step="1" aria-label="Agent speed">
+              <b id="speed-value">3×</b>
+            </label>
+            <span class="controls-note">LOS perception · frontier BFS · online DQN</span>
+          </div>
+
+          <div class="dqn">
+            <div class="dqn-head">
+              <span class="meter-label">Battle DQN · online</span>
+              <span id="dqn-eps" class="dqn-eps">ε 1.00</span>
+            </div>
+            <div class="dqn-stats">
+              <div><span>episodes</span><b id="dqn-episodes">0</b></div>
+              <div><span>winrate</span><b id="dqn-winrate">—</b></div>
+              <div><span>loss</span><b id="dqn-loss">—</b></div>
+              <div><span>battles</span><b id="dqn-battles">0</b></div>
+            </div>
+            <ul id="qbars" class="qbars" aria-label="Q values for each move"></ul>
+            <canvas id="dqn-chart" width="600" height="52" aria-label="DQN winrate over episodes"></canvas>
+          </div>
+        </div>
+
+        <aside class="telemetry" aria-label="Live agent telemetry">
+          <div class="telemetry-head">
+            <span class="kicker">Telemetry</span>
+            <span class="live"><span class="pulse"></span>live</span>
+          </div>
+          <div class="meters">
+            <div class="meter-card">
+              <span class="meter-label">Explored</span>
+              <strong id="explored">0%</strong>
+              <div class="bar"><i id="explored-bar"></i></div>
+            </div>
+            <div class="meter-card">
+              <span class="meter-label">Steps</span>
+              <strong id="steps">0</strong>
+              <span class="meter-sub" id="steps-sub">0 tiles / sec</span>
+            </div>
+          </div>
+          <dl class="readout">
+            <div><dt>Position</dt><dd id="position">x:0 y:0</dd></div>
+            <div><dt>Frontier</dt><dd id="frontier">searching…</dd></div>
+            <div><dt>Detections</dt><dd id="detections">0</dd></div>
+            <div><dt>Sensed</dt><dd id="sensed">0 tiles</dd></div>
+            <div><dt>Model</dt><dd>retinanet + dqn</dd></div>
+            <div><dt>Battle AI</dt><dd id="policy">ε 1.00</dd></div>
+          </dl>
+          <div class="seen">
+            <span class="meter-label">Detected objects</span>
+            <ul id="seen-list" class="chips"><li class="chip empty">no detections yet</li></ul>
+          </div>
+          <div class="log-wrap">
+            <div class="log-head"><span>agent.log</span><span>tail -f</span></div>
+            <ol id="log" class="log" aria-live="polite"></ol>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow"><span>Orbital 2019</span> Judge's Choice Award</p>
+        <h1>Teaching an AI to<br><em>play Pokémon Emerald.</em></h1>
+        <p class="lede">
+          A research playground from NUS Computing. A CNN sees the game, a
+          SLAM-inspired mapper remembers the world, frontier exploration picks
+          the next path, and deep Q-learning learns which move to press.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#lab">Watch the agent explore</a>
+          <a class="btn ghost" href="https://github.com/poke-AI/poke.AI" target="_blank" rel="noreferrer">Read the source</a>
+        </div>
+        <dl class="hero-stats">
+          <div><dt>6</dt><dd>object classes</dd></div>
+          <div><dt>3</dt><dd>autonomous modules</dd></div>
+          <div><dt>60<small>fps</small></dt><dd>vision pipeline</dd></div>
+          <div><dt>1</dt><dd>GBA emulator</dd></div>
+        </dl>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orb"></div>
+        <div class="ring ring-a"></div>
+        <div class="ring ring-b"></div>
+        <div class="scan"></div>
+        <div class="art-card art-a"><span class="dot mint"></span>detect: pokecenter <b>0.94</b></div>
+        <div class="art-card art-b"><span class="dot amber"></span>frontier score <b>+38</b></div>
+        <div class="art-card art-c"><span class="dot blue"></span>map reveal <b>62%</b></div>
+        <div class="glyph glyph-a"></div>
+        <div class="glyph glyph-b"></div>
+        <div class="glyph glyph-c"></div>
+      </div>
+    </section>
+
+    <section id="modules" class="modules" aria-labelledby="modules-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">Three loops, one agent</p>
+          <h2 id="modules-title">How it thinks.</h2>
+        </div>
+        <p class="section-note">Each mechanic gets a dedicated module instead of one impossible end-to-end network.</p>
+      </div>
+      <div class="module-grid">
+        <article class="module">
+          <div class="module-top"><span class="tag">VISION + SLAM</span><span class="num">01</span></div>
+          <h3>Localise &amp; map the world</h3>
+          <p>A RetinaNet detector finds NPCs, houses, gyms, Pokécenters, marts and exits in every frame. Odometry lifts those boxes onto a global tile map, which is far easier than reading the ROM's RAM.</p>
+          <ul class="tags"><li>CNN</li><li>object detection</li><li>mapper.py</li></ul>
+        </article>
+        <article class="module">
+          <div class="module-top"><span class="tag">ROBOTICS</span><span class="num">02</span></div>
+          <h3>Explore with frontiers</h3>
+          <p>Boundary tiles between known and unknown space are scored by their neighbours. A BFS finds the best frontier, another BFS finds the path, and collisions trigger a replan.</p>
+          <ul class="tags"><li>frontier-based</li><li>BFS</li><li>path_finder.py</li></ul>
+        </article>
+        <article class="module">
+          <div class="module-top"><span class="tag">REINFORCEMENT</span><span class="num">03</span></div>
+          <h3>Learn the battle</h3>
+          <p>A deep Q-network learns which of four moves wins more often. The reward is simple: damage dealt minus damage taken over a turn. It trains live in this page, with experience replay and a target network.</p>
+          <ul class="tags"><li>DQN</li><li>experience replay</li><li>online training</li></ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="pipeline" class="pipeline" aria-labelledby="pipeline-title">
+      <div class="section-head">
+        <div>
+          <p class="kicker">System schematic</p>
+          <h2 id="pipeline-title">From pixels to a pressed button.</h2>
+        </div>
+      </div>
+      <div class="flow" role="img" aria-label="Pipeline: emulator feeds screen capture, then the detector, then the mapper and frontier planner, then the input controller.">
+        <div class="node"><span>GBA emulator</span><small>VBA-rerecording</small></div>
+        <div class="arrow"><i></i></div>
+        <div class="node"><span>Frame capture</span><small>mss · fastgrab</small></div>
+        <div class="arrow"><i></i></div>
+        <div class="node accent"><span>Detector</span><small>RetinaNet CNN</small></div>
+        <div class="arrow"><i></i></div>
+        <div class="node"><span>Mapper + planner</span><small>SLAM · frontier BFS</small></div>
+        <div class="arrow"><i></i></div>
+        <div class="node"><span>Input</span><small>PyAutoGUI</small></div>
+        <div class="loop">feedback loop · ZMQ</div>
+      </div>
+      <div class="facts">
+        <div><b>Python 3.6</b><span>agent runtime</span></div>
+        <div><b>Keras RetinaNet</b><span>detector</span></div>
+        <div><b>OpenCV</b><span>frame processing</span></div>
+        <div><b>ZMQ</b><span>process bridge</span></div>
+        <div><b>Tkinter</b><span>operator GUI</span></div>
+      </div>
+    </section>
+
+    <section id="origin" class="origin" aria-labelledby="origin-title">
+      <div class="origin-copy">
+        <p class="kicker">Origin story</p>
+        <h2 id="origin-title">Built for the love of Emerald.</h2>
+        <p>
+          poke.AI began as an Orbital 2019 project at the NUS School of Computing
+          and took home the Judge's Choice award. It is deliberately honest about
+          the state of the art: general game-playing agents are still far from
+          the fiction, so the project splits the problem into tidy, inspectable
+          pieces.
+        </p>
+        <p>
+          The long-term idea is simple. Give the agent eyes, a memory, curiosity
+          and a little reinforcement learning — then let it wander Hoenn.
+        </p>
+        <a class="btn ghost" href="https://github.com/poke-AI/poke.AI" target="_blank" rel="noreferrer">Original repository ↗</a>
+      </div>
+      <blockquote class="quote">
+        <p>“By letting go of our obsession with AI being this omniscient, mystical being, we allow ourselves to see what it can actually do.”</p>
+        <footer>— the poke.AI README</footer>
+      </blockquote>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-brand"><span class="ball" aria-hidden="true"></span> poke.AI</div>
+    <p>Browser reconstruction of the exploration loop. No copyrighted ROM data is included. Original research by <a href="https://github.com/poke-AI" target="_blank" rel="noreferrer">poke-AI</a>. Not affiliated with Nintendo or The Pokémon Company.</p>
+    <p class="footer-meta">Remixed with <a href="https://omgithub.com" target="_blank" rel="noreferrer">OMGithub</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
